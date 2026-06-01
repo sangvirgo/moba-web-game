@@ -562,7 +562,7 @@ class Hero extends Ent {
     this.items=[];this.abLvl=[0,0,0,0];this.abCd=[0,0,0,0];this.abPts=0;
     this.range=def.range;this.atkSpd=def.atkSpd;this.radius=18;
     this.stealthed=false;this.lane=['top','mid','bot'][randInt(0,2)];
-    this.moveTarget=null;this.attackMove=false;
+    this.moveTarget=null;this.attackMove=false;this.respawnTime=0;
     this.passiveCd=0;this.empoweredAtk=0;this.spinTimer=0;this.spinDmg=0;
     this.markTimer=0;this.markedTarget=null;this.markDmgDealt=0;
     this.shroudTimer=0;this.rocketMode=false;
@@ -1496,6 +1496,7 @@ function initShop(){
 function renderShopItems(cat){
   let grid=$('shop-grid');grid.innerHTML='';
   let items=ITEMS.filter(i=>i.cat===cat);
+  if(items.length===0)items=ITEMS.filter(i=>i.cat===cat);
   for(let it of items){
     let d=document.createElement('div');d.className='s-item';
     d.innerHTML=`<div class="si-icon">${it.icon}</div><div class="si-name">${it.name}</div><div class="si-cost">💰 ${it.cost}g</div><div class="si-desc">${it.desc}</div>`;
@@ -1508,8 +1509,11 @@ function updateShopUI(){
   let p=ents.find(e=>e.isPlayer);if(!p)return;
   $('shop-gold').textContent=Math.floor(p.gold)+'g';
   document.querySelectorAll('.s-item').forEach((d,i)=>{
-    let items=ITEMS.filter(it=>it.cat===document.querySelector('.shop-tab.active')?.textContent.toLowerCase().replace('-tier',''));
-    if(items[i])d.classList.toggle('cant',items[i].cost>p.gold||p.items.length>=6);
+    let activeTabEl=document.querySelector('.shop-tab.active');
+    let catMap={'Starter':'start','Boots':'boots','Mid-Tier':'mid','Legendary':'legendary','Mythic':'mythic','Potions':'consumable'};
+    let cat=catMap[activeTabEl?.textContent]||'start';
+    let tabItems=ITEMS.filter(it=>it.cat===cat);
+    if(tabItems[i])d.classList.toggle('cant',tabItems[i].cost>p.gold||p.items.length>=6);
   });
   for(let i=0;i<6;i++){let s=$('sell-'+i);if(s){s.textContent=p.items[i]?p.items[i].icon:''}}
 }
