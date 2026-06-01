@@ -388,7 +388,7 @@ const CHAMPS=[
   hp:530,mp:400,atk:53,def:24,spd:155,range:525,atkSpd:0.65,hpG:80,mpG:45,atkG:3.0,defG:2.8,hpReg:5,mpReg:8,resource:'mana',
   passive:{name:'Glorious Evolution',desc:'Gain augment fragments from kills/assists. Each ability can be augmented at 3 fragments',icon:'⚙️'},
   abilities:[
-    {name:'Siphon Power',icon:'🔋',key:'Q',desc:'Deal 60/80/100/120/140 + 60% AP to an enemy, gain a shield for 20-150 + 40% AP, empower next attack',cd:9/8/7/6/5,mp:45,cost:45,range:600,type:'targeted',dmgBase:60,dmgScale:20,apRatio:0.6,shieldBase:20,shieldScale:30,shieldApRatio:0.4},
+    {name:'Siphon Power',icon:'🔋',key:'Q',desc:'Deal 60/80/100/120/140 + 60% AP to an enemy, gain a shield for 20-150 + 40% AP, empower next attack',cd:[9,8,7,6,5],mp:45,cost:45,range:600,type:'targeted',dmgBase:60,dmgScale:20,apRatio:0.6,shieldBase:20,shieldScale:30,shieldApRatio:0.4},
     {name:'Gravity Field',icon:'🌀',key:'W',desc:'Create a gravity zone. Enemies inside are slowed 30%, stunned for 1.5s after 1.5s',cd:17,mp:65,cost:65,range:800,type:'zone',aoeR:270,slow:0.3,slowDur:1.5,stun:1.5,chargeTime:1.5},
     {name:'Death Ray',icon:'⚡',key:'E',desc:'Fire a laser in a line dealing 70/115/160/205/250 + 60% AP',cd:13,mp:70,cost:70,range:700,type:'laser',dmgBase:70,dmgScale:45,apRatio:0.6,width:80},
     {name:'Chaos Storm',icon:'🌪️',key:'R',desc:'Summon a storm that deals 100/175/250 + 60% AP, then follows enemies dealing 65/105/145 + 45% AP/sec for 7s',cd:120,mp:100,cost:100,range:700,type:'storm',dmgBase:100,dmgScale:75,apRatio:0.6,tickDmgBase:65,tickDmgScale:40,tickApRatio:0.45,dur:7,aoeR:325,stormSpd:250}
@@ -443,7 +443,7 @@ const ITEMS=[
 let state='loading',selectedChamp=null,gameTime=0,blueK=0,redK=0;
 let ents=[],particles=[],projectiles=[],structures=[],jungle=[];
 let brushAreas=[],cam={x:3500,y:3500},keys={},mouse={x:0,y:0,wx:0,wy:0,down:false};
-let touchJoy={active,dx:0,dy:0},isMobile='ontouchstart' in window;
+let touchJoy={active:false,dx:0,dy:0},isMobile='ontouchstart' in window;
 let gameOver=false,minionTimer=0,fogCvs=null;
 let fpsArr=[],lastFrameTime=0;
 let settings={sfxVol:0.5,musicVol:0.3,camSens:5,showFps:false};
@@ -752,7 +752,7 @@ class Tower extends Ent {
     if(this.target&&this.atkTimer<=0){
       this.atkTimer=1/this.atkSpd;
       let dmg=this.target.takeDmg(this.atk,this);
-      projectiles.push({x:this.x,y:this.y,tx:this.target.x,ty:this.target.y,spd:800,team:this.team,type:'tower',life:0.35,color:this.team==='blue'?'#4fc3f7':'#ef5350'});
+      let tdx=this.target.x-this.x,tdy=this.target.y-this.y,td=Math.hypot(tdx,tdy)||1;projectiles.push({x:this.x,y:this.y,vx:tdx/td*800,vy:tdy/td*800,team:this.team,type:'tower',life:0.5,color:this.team==='blue'?'#4fc3f7':'#ef5350'});
     }
   }
   die(killer){
@@ -839,7 +839,7 @@ class JungleMob extends Ent {
       if(this.camp.name==='Dragon'){for(let e of ents)if(e.team===killer.team&&e.type==='hero'&&e.alive){e.atk+=5;e.def+=3;e.recalc()}}
       if(this.camp.name==='Baron Nashor'){for(let e of ents)if(e.team===killer.team&&e.type==='hero'&&e.alive){e.atk+=15;e.ap+=30;e.recalc()}}
     }
-    let c2=this.camp;setTimeout(()=>{if(state!=='playing')return;let m=new JungleMob(c2);jungle.push(m);ents.push(m)},60000);
+    let c2=this.camp;let jIdx=jungle.indexOf(this);if(jIdx>=0)jungle.splice(jIdx,1);setTimeout(()=>{if(state!=='playing')return;let m=new JungleMob(c2);jungle.push(m);ents.push(m)},60000);
   }
   drawBody(c,sx,sy){
     c.beginPath();c.arc(sx,sy,this.radius,0,Math.PI*2);c.fillStyle='#ffa726';c.fill();
@@ -1250,8 +1250,8 @@ function updateProjectiles(dt){
       for(let e of ents)if(e.team!==p.team&&e.alive&&dist(e,p)<p.aoeR){
         if(p.dmg&&!e._zoned){e.takeDmg(p.dmg*dt*0.5,p.src,'magic');e._zoned=true}
         if(p.slow&&!e.effects.some(x=>x.type==='slow'))e.effects.push({type:'slow',timer:p.slowDur||1,amount:p.slow});
-        if(p.stun&&p.charged)e.effects.push({type:'stun',timer:p.stun||1.5});
-        if(p.root&&p.charged)e.effects.push({type:'root',timer:p.root||1.5});
+        if(p.stun&&p.charged&&!e.effects.some(x=>x.type==='stun'))e.effects.push({type:'stun',timer:p.stun||1.5});
+        if(p.root&&p.charged&&!e.effects.some(x=>x.type==='root'))e.effects.push({type:'root',timer:p.root||1.5});
       }
       // Reset zone flag
       for(let e of ents)if(e._zoned&&dist(e,p)>p.aoeR)e._zoned=false;
@@ -1577,30 +1577,27 @@ function gameLoop(ts){
   let player=ents.find(e=>e.isPlayer);
   if(player&&player.alive){
     player.vx=0;player.vy=0;let sp=player.spd;
-    if(keys['KeyW']||keys['ArrowUp'])player.vy=-sp;
-    if(keys['KeyS']||keys['ArrowDown'])player.vy=sp;
-    if(keys['KeyA']||keys['ArrowLeft'])player.vx=-sp;
-    if(keys['KeyD']||keys['ArrowRight'])player.vx=sp;
+    if(keys['ArrowUp'])player.vy=-sp;
+    if(keys['ArrowDown'])player.vy=sp;
+    if(keys['ArrowLeft'])player.vx=-sp;
+    if(keys['ArrowRight'])player.vx=sp;
+    if(keys['ArrowUp']||keys['ArrowDown']||keys['ArrowLeft']||keys['ArrowRight']){if(recalling){recalling=false;player.recallChan=0}}
     if(player.vx&&player.vy){player.vx*=0.707;player.vy*=0.707}
     if(touchJoy.active){player.vx=touchJoy.dx*sp;player.vy=touchJoy.dy*sp}
     if(keys['Space']){player.vx=0;player.vy=0}
 
-    // Auto-attack
-    player.atkTimer-=dt;
+    // Auto-attack (atkTimer decremented in Ent.update)
     if(player.atkTimer<=0){
       let nr=null,nd=player.range;
       for(let e of ents){if(e.team!==player.team&&e.alive&&e.visible&&e.type!=='nexus'){let d=dist(player,e);if(d<nd){nr=e;nd=d}}}
       if(nr){player.atkTimer=1/player.atkSpd;let dm=player.atk;if(player.empoweredAtk>0){dm+=player.atk*0.5;player.empoweredAtk=0}
         if(player.rocketMode){dm*=1.1}
         nr.takeDmg(dm,player,'physical');sfxHit();
-        projectiles.push({x:player.x,y:player.y,tx:nr.x,ty:nr.y,spd:500,team:player.team,type:'hero',life:0.4,color:'#c89b3c'})}
+        let adx=nr.x-player.x,ady=nr.y-player.y,add=Math.hypot(adx,ady)||1;projectiles.push({x:player.x,y:player.y,vx:adx/add*500,vy:ady/add*500,team:player.team,type:'hero',life:0.4,color:'#c89b3c'})}
     }
   }
 
-  // Recall update
-  if(recalling&&player){player.recallChan-=dt;recallProgress=1-player.recallChan/4;
-    if(player.recallChan<=0){let b=player.team==='blue'?{x:400,y:400}:{x:MAP-400,y:MAP-400};player.x=b.x;player.y=b.y;player.hp=player.maxHp;player.mp=player.maxMp;recalling=false;sfxRecall()}
-  }
+  // Recall handled in Hero.update()
 
   // Update entities
   for(let e of ents){
@@ -1648,7 +1645,7 @@ document.addEventListener('keydown',e=>{
     if(e.shiftKey){if(p.abPts>0&&p.abLvl[0]<5){p.abLvl[0]++;p.abPts--;sfxLevelUp()}}
     else if(p.abLvl[0]>0)useAbility(p,0,null)
   }
-  if(e.code==='KeyW'&&!e.shiftKey&&p.abLvl[1]>0)useAbility(p,1,null);
+  if(e.code==='KeyW'){if(e.shiftKey){if(p.abPts>0&&p.abLvl[1]<5){p.abLvl[1]++;p.abPts--;sfxLevelUp()}}}
   if(e.code==='KeyE'){
     if(e.shiftKey){if(p.abPts>0&&p.abLvl[2]<5){p.abLvl[2]++;p.abPts--;sfxLevelUp()}}
     else if(p.abLvl[2]>0)useAbility(p,2,null)
@@ -1660,7 +1657,7 @@ document.addEventListener('keydown',e=>{
   if(e.code==='KeyB'&&!recalling&&p.alive){recalling=true;p.recallChan=4;recallProgress=0;sfxRecall()}
   if(e.code==='KeyP'||e.code==='KeyL')toggleShop();
   if(e.code==='Escape'){if($('shop').style.display==='block')$('shop').style.display='none';recalling=false;if(p)p.recallChan=0}
-  if(e.code==='Tab'){e.preventDefault();let sb=$('score-panel');sb.style.display=sb.style.display==='none'?'block':'block'}
+  if(e.code==='Tab'){e.preventDefault();let sb=$('score-panel');sb.style.display=sb.style.display==='none'?'block':'none'}
   if(e.code==='KeyF'){$('settings').style.display=$('settings').style.display==='none'?'block':'none'}
 });
 document.addEventListener('keyup',e=>{keys[e.code]=false});
